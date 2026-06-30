@@ -54,15 +54,23 @@ def start_web_server(port: int = 8000):
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
 
 
-def start_periodic_scanner_loop(scanner):
+async def _scanner_main(scanner, ready_event: threading.Event):
     """
-    Run APScheduler in its own asyncio event loop, in a background thread.
-    AsyncIOScheduler needs a running event loop to fire async jobs.
+    Coroutine that starts the scheduler and then keeps the loop alive.
+    AsyncIOScheduler.start() requires asyncio.get_running_loop() to
+    succeed, so it MUST be called from inside a running coroutine —
+    not before loop.run_forever(), which is too early.
     """
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     scanner.start()
-    loop.run_forever()
+    ready_event.set()
+    logger.info("Periodic scanner running inside its event loop")
+    while True:
+        await asyncio.sleep(3600)
+
+
+def start_periodic_scanner_loop(scanner, ready_event: threading.Event):
+    """Run APScheduler in its own asyncio event loop, in a background thread."""
+    asyncio.run(_scanner_main(scanner, ready_event))
 
 
 def main():
@@ -73,6 +81,22 @@ def main():
     args = parser.parse_args()
 
     logger.info(f"Starting Safety Vision - site={args.site}")
+
+    # ── Initialize CUDA context in the main thread BEFORE spawning any
+    # background threads (web server, periodic scanner). On Jetson, if a
+    # background thread touches CUDA/TensorRT first, the primary context
+    # ends up bound to that thread instead of main, and YOLO's later
+    # TensorRT engine load in the main thread fails with
+    # "CUDA initialization failure with error: 100" — even though running
+    # the same engine standalone works fine. Initializing torch.cuda here,
+    # first, pins the CUDA context to main thread for the whole process.
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.init()
+            logger.info(f"CUDA context initialized on main thread: {torch.cuda.get_device_name(0)}")
+    except Exception as e:
+        logger.warning(f"CUDA init skipped: {e}")
 
     # Start web preview server in background
     web_thread = threading.Thread(
@@ -96,12 +120,14 @@ def main():
     scanner = None
     if periodic_enabled:
         scanner = PeriodicScanner(site=site, interval_minutes=interval)
+        ready_event = threading.Event()
         scanner_thread = threading.Thread(
             target=start_periodic_scanner_loop,
-            args=(scanner,),
+            args=(scanner, ready_event),
             daemon=True,
         )
         scanner_thread.start()
+        ready_event.wait(timeout=5)
         logger.info(f"Periodic scanner thread started (every {interval} min)")
     else:
         logger.info("Periodic scanner disabled in config")

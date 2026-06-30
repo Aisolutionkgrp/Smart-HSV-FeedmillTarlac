@@ -1,0 +1,18 @@
+[Unit]
+Description=HSV Safety Vision - Backend (FastAPI + YOLO + Gemini)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=orin_nano
+WorkingDirectory=/home/orin_nano/Smart-HSV-FeedmillTarlac
+ExecStartPre=/usr/bin/docker compose up -d
+ExecStart=/home/orin_nano/.local/bin/uv run python main.py --site robot_zone
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/orin_nano/Smart-HSV-FeedmillTarlac/logs/service.log
+StandardError=append:/home/orin_nano/Smart-HSV-FeedmillTarlac/logs/service-error.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=HSV Safety Vision - Dashboard (Next.js)
+After=hsv-backend.service
+Wants=hsv-backend.service
+
+[Service]
+Type=simple
+User=orin_nano
+WorkingDirectory=/home/orin_nano/Smart-HSV-FeedmillTarlac/dashboard
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=10
+Environment=PORT=3000
+StandardOutput=append:/home/orin_nano/Smart-HSV-FeedmillTarlac/logs/dashboard.log
+StandardError=append:/home/orin_nano/Smart-HSV-FeedmillTarlac/logs/dashboard-error.log
+
+[Install]
+WantedBy=multi-user.target
