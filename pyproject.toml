@@ -6,6 +6,11 @@ requires-python = ">=3.10"
 
 dependencies = [
     # ── AI / Vision ───────────────────────────────────────────
+    # torch/torchvision pinned exactly to the versions published on the
+    # Jetson AI Lab mirror — without an exact pin uv's resolver picks the
+    # newest version (from PyPI) and never even looks at the Jetson index.
+    "torch==2.11.0",
+    "torchvision==0.26.0",
     "ultralytics>=8.2.103",
     "google-generativeai==0.7.2",
     "opencv-python>=4.10.0",
