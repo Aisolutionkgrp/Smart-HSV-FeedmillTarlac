@@ -1,0 +1,45 @@
+[project]
+name = "hsv-vision"
+version = "1.0.0"
+description = "Factory Safety Vision System — CCTV-based AI safety monitoring"
+requires-python = ">=3.12"
+
+dependencies = [
+    # ── AI / Vision ───────────────────────────────────────────
+    "ultralytics>=8.2.103",
+    "google-generativeai==0.7.2",
+    "opencv-python>=4.10.0",
+    # ── Geometry ──────────────────────────────────────────────
+    "shapely==2.0.6",
+    # ── Config / Settings ─────────────────────────────────────
+    "pydantic-settings==2.3.4",
+    "pyyaml==6.0.2",
+    "python-dotenv==1.0.1",
+    # ── Queue / Cache ─────────────────────────────────────────
+    "redis==5.0.8",
+    "apscheduler==3.10.4",
+    # ── API ───────────────────────────────────────────────────
+    "fastapi==0.111.1",
+    "uvicorn[standard]==0.30.3",
+    "websockets==12.0",
+    # ── Database ──────────────────────────────────────────────
+    "sqlalchemy[asyncio]==2.0.31",
+    "asyncpg==0.29.0",
+    "alembic==1.13.2",
+    # ── Alert ─────────────────────────────────────────────────
+    "python-telegram-bot==21.4",
+    # ── Utilities ─────────────────────────────────────────────
+    "numpy==1.26.4",
+    "pillow==10.4.0",
+    "aiofiles==24.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.4.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.uv]
+package = false          # app ไม่ใช่ library — ไม่ต้อง build wheel

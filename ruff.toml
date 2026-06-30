@@ -1,0 +1,56 @@
+# ruff.toml
+# ──────────
+# Ruff linter + formatter config for hsv-vision
+
+# ── General ───────────────────────────────────────────────────
+line-length = 100
+indent-width = 4
+target-version = "py312"
+
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "alembic/versions",
+    "dashboard",           # Next.js — not Python
+]
+
+# ── Linter ────────────────────────────────────────────────────
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes (unused imports, undefined names)
+    "I",    # isort (import order)
+    "B",    # flake8-bugbear (common bugs)
+    "UP",   # pyupgrade (modern Python syntax)
+    "N",    # pep8-naming
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "LOG",  # flake8-logging
+]
+
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "B008",   # do not perform function calls in default args (FastAPI dependency injection)
+    "N803",   # argument name should be lowercase (cv2 uses uppercase like H, W)
+    "N806",   # variable in function should be lowercase (same reason)
+    "SIM108", # ternary operator — sometimes less readable
+]
+
+# Allow unused imports in __init__.py (re-exports)
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"config/settings.py" = ["N802"]   # pydantic fields are UPPER_CASE by convention
+
+# ── isort ────────────────────────────────────────────────────
+[lint.isort]
+known-first-party = ["core", "sites", "pipeline", "api", "db", "config"]
+force-sort-within-sections = true
+
+# ── Formatter ────────────────────────────────────────────────
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"          # consistent across Windows/Linux/Jetson

@@ -1,0 +1,62 @@
+# sites/robot_zone/config.yaml
+
+site_id: "robot_zone"
+site_name: "จุดหุ่นยนต์ยกกระสอบ"
+camera_rtsp: "${ROBOT_ZONE_CAM1_RTSP}"
+resolution: [1920, 1080]
+frame_skip: 3
+
+zones:
+  - zone_id: "robot_arm_zone"
+    name: "Robot Arm Zone 1"
+    risk_level: "RED"
+    predict_frames: 20
+    polygon:
+      - [631, 429]
+      - [603, 497]
+      - [169, 498]
+      - [11, 684]
+      - [11, 1073]
+      - [1004, 1075]
+      - [885, 427]
+
+  - zone_id: "conveyor_zone"
+    name: "Conveyor Zone"
+    risk_level: "ORANGE"
+    predict_frames: 20
+    polygon:
+      - [891, 418]
+      - [1015, 1079]
+      - [1755, 1079]
+      - [1661, 954]
+      - [1842, 894]
+      - [1397, 448]
+      - [1347, 448]
+      - [1312, 412]
+
+  - zone_id: "suspended_load_zone"
+    name: "Robot Arm Zone 2"
+    risk_level: "RED"
+    predict_frames: 20
+    polygon:
+      - [672, 256]
+      - [1083, 252]
+      - [997, 159]
+      - [705, 158]
+
+logic:
+  event_enabled: true
+  periodic_enabled: true
+  periodic_interval_minutes: 10
+  cooldown_seconds: 60
+  prediction_enabled: true
+
+ppe_required:
+  - helmet
+  - safety_shoes
+  - reflect_vest
+  - gloves
+
+alert:
+  telegram_enabled: true
+  save_snapshot: true

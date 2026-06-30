@@ -1,0 +1,37 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: hsv_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: hsv_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: safety_db
+      POSTGRES_USER: hsv_user
+      POSTGRES_PASSWORD: hsv_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hsv_user -d safety_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis_data:
+  postgres_data:

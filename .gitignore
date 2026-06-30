@@ -1,0 +1,32 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# YOLO models
+*.pt
+*.onnx
+
+# Snapshots & logs
+snapshots/
+logs/
+
+# Database
+*.db
+*.sqlite
+
+# Node
+dashboard/node_modules/
+dashboard/.next/
+
+# OS
+.DS_Store
+Thumbs.db
