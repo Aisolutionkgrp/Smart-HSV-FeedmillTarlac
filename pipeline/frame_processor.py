@@ -21,6 +21,7 @@ from config.settings import settings
 from core.alert_manager import AlertManager
 from core.cooldown_manager import CooldownManager
 from pipeline.event_saver import save_event
+from pipeline.periodic_scanner import PeriodicScanner
 from core.detector import Detector, DetectionResult, PersonDetection
 from core.zone_manager import ZoneCheckResult, ZoneHit
 from sites.base_site import BaseSite
@@ -42,9 +43,10 @@ class FrameProcessor:
     _COLOR_SKELETON        = (255, 255, 0)    # yellow
     _FONT = cv2.FONT_HERSHEY_SIMPLEX
 
-    def __init__(self, site: BaseSite, show_preview: bool = False):
+    def __init__(self, site: BaseSite, show_preview: bool = False, periodic_scanner: PeriodicScanner | None = None):
         self.site = site
         self.show_preview = show_preview
+        self._periodic_scanner = periodic_scanner
 
         cfg = site.site_config
         self._reader = StreamReader(
@@ -66,6 +68,11 @@ class FrameProcessor:
         self._fps_counter = 0
         self._fps_time = time.time()
         self._fps_display = 0.0
+
+        # Persistent event loop for async DB/Telegram calls.
+        # Creating a new loop per call breaks SQLAlchemy's async engine,
+        # which binds its connection pool to the loop it was first used on.
+        self._loop = asyncio.new_event_loop()
 
     # ── Main loop ─────────────────────────────────────────────────────────────
 
@@ -93,6 +100,10 @@ class FrameProcessor:
 
         # 2. Zone check
         zone_result: ZoneCheckResult = self._zone_manager.check(detection.persons)
+
+        # Keep periodic scanner updated with latest raw frame (before annotation)
+        if self._periodic_scanner:
+            self._periodic_scanner.update_frame(frame.copy(), detection)
 
         # 3. Annotate frame
         annotated = self._annotate(frame.copy(), detection, zone_result)
@@ -259,8 +270,8 @@ class FrameProcessor:
                     f"risk={hit.zone.risk_level} "
                     f"person={hit.person.track_id}"
                 )
-                # Run Gemini analysis in background (non-blocking)
-                asyncio.get_event_loop().run_until_complete(
+                # Run Gemini analysis using our persistent event loop
+                self._loop.run_until_complete(
                     self._run_gemini(frame.copy(), zone_result, detection)
                 )
             else:
@@ -275,21 +286,57 @@ class FrameProcessor:
         zone_result: ZoneCheckResult,
         detection: DetectionResult,
     ) -> None:
-        """Call site.on_zone_hit() and save annotated snapshot."""
+        """Call site.on_zone_hit(), save snapshot, alert, and persist to DB."""
         try:
             result = await self.site.on_zone_hit(frame, zone_result, detection)
-            if result and result.get("frame") is not None:
-                _hit = zone_result.hits[0] if zone_result.hits else None
-                self._save_snapshot(
-                    result["frame"], detection,
-                    zone_id=_hit.zone.zone_id if _hit else "unknown",
-                    risk_level=_hit.zone.risk_level if _hit else "UNKNOWN",
+            if not result or result.get("frame") is None:
+                return
+
+            annotated_frame = result["frame"]
+            _hit = zone_result.hits[0] if zone_result.hits else None
+            zone_id = _hit.zone.zone_id if _hit else "unknown"
+            risk_level = result.get("risk_level") or (_hit.zone.risk_level if _hit else "UNKNOWN")
+            person = _hit.person if _hit else None
+
+            self._save_snapshot(
+                annotated_frame, detection,
+                zone_id=zone_id,
+                risk_level=risk_level,
+            )
+            push_frame(self.site.site_config.site_id, annotated_frame)
+
+            text = result.get("text", "")
+            if text:
+                sep = "=" * 50
+                logger.info("\n" + sep + "\n" + text + "\n" + sep)
+
+            # ── Send Telegram alert ─────────────────────────────────────────
+            alert_status = "sent"
+            try:
+                await self._alert.send_alert(
+                    frame=annotated_frame,
+                    text=text,
+                    site_id=self.site.site_config.site_id,
+                    zone_id=zone_id,
+                    risk_level=risk_level,
                 )
-                push_frame(self.site.site_config.site_id, result["frame"])
-                # Print text summary to log
-                if result.get("text"):
-                    sep = "=" * 50
-                    logger.info("\n" + sep + "\n" + result["text"] + "\n" + sep)
+            except Exception as e:
+                logger.error(f"Telegram alert failed: {e}")
+                alert_status = "failed"
+
+            # ── Save to PostgreSQL ──────────────────────────────────────────
+            event_id = await save_event(
+                site_id=self.site.site_config.site_id,
+                zone_id=zone_id,
+                risk_level=risk_level,
+                result=result,
+                snapshot_path=self._last_snapshot_path,
+                person_track_id=person.track_id if person else None,
+                person_speed=person.speed if person else None,
+                alert_status=alert_status,
+            )
+            logger.info(f"[{self.site.site_config.site_id}] Event persisted: id={event_id}")
+
         except Exception as e:
             logger.error(f"Gemini analysis error: {e}", exc_info=True)
 

@@ -3,13 +3,14 @@ core/alert_manager.py
 ──────────────────────
 Telegram alert manager.
 
-ส่ง:
-- ภาพ annotated
-- text summary (situation + PPE + environment)
-- metadata (zone, risk, timestamp)
+ส่งเป็น 2 ข้อความแยกกัน:
+1. รูปภาพ + header สั้นๆ (caption)
+2. ข้อความรายละเอียดเต็ม (situation + PPE + environment)
+
+เหตุผล: Telegram photo caption จำกัดที่ 1024 ตัวอักษร
+แต่ text message ธรรมดาจำกัดที่ 4096 ตัวอักษร — ส่งแยกได้เนื้อหาครบไม่ตัด
 """
 
-import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 class AlertManager:
-    """Send safety alerts via Telegram."""
+    """Send safety alerts via Telegram — image first, then full detail text."""
+
+    _TEXT_LIMIT = 4096   # Telegram send_message hard limit
 
     def __init__(self):
         from telegram import Bot
@@ -43,38 +46,70 @@ class AlertManager:
         snapshot_path: Path | None = None,
     ) -> None:
         """
-        Send annotated image + text summary to Telegram.
+        Send annotated image first (with short header caption),
+        then send the full detail text as a separate message.
         """
+        header = self._build_header(site_id, zone_id, risk_level)
+
+        # ── 1. Send image with short caption ────────────────────────────────
         try:
-            header = self._build_header(site_id, zone_id, risk_level)
-            full_text = f"{header}\n\n{text}"
-
-            # Encode frame to bytes
             img_bytes = self._encode_frame(frame)
-
             await self._bot.send_photo(
                 chat_id=self._chat_id,
                 photo=img_bytes,
-                caption=full_text,
+                caption=header,
                 parse_mode="Markdown",
             )
-            logger.info(f"Telegram alert sent — zone={zone_id} risk={risk_level}")
-
+            logger.info(f"Telegram photo sent — zone={zone_id} risk={risk_level}")
         except Exception as e:
-            logger.error(f"Telegram send failed: {e}")
+            logger.error(f"Telegram photo send failed: {e}")
+
+        # ── 2. Send full detail text (chunked if needed) ───────────────────
+        if text:
+            try:
+                for chunk in self._chunk_text(text, self._TEXT_LIMIT):
+                    await self._bot.send_message(
+                        chat_id=self._chat_id,
+                        text=chunk,
+                        parse_mode="Markdown",
+                    )
+                logger.info(f"Telegram detail text sent — zone={zone_id}")
+            except Exception as e:
+                logger.error(f"Telegram text send failed: {e}")
 
     async def send_text(self, text: str) -> None:
-        """Send text-only message."""
+        """Send text-only message (chunked if needed)."""
         try:
-            await self._bot.send_message(
-                chat_id=self._chat_id,
-                text=text,
-                parse_mode="Markdown",
-            )
+            for chunk in self._chunk_text(text, self._TEXT_LIMIT):
+                await self._bot.send_message(
+                    chat_id=self._chat_id,
+                    text=chunk,
+                    parse_mode="Markdown",
+                )
         except Exception as e:
             logger.error(f"Telegram send_text failed: {e}")
 
     # ── Private ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _chunk_text(text: str, limit: int) -> list[str]:
+        """Split long text into Telegram-safe chunks, breaking on newlines."""
+        if len(text) <= limit:
+            return [text]
+
+        chunks = []
+        current = ""
+        for line in text.split("\n"):
+            # +1 for the newline that will be added back
+            if len(current) + len(line) + 1 > limit:
+                if current:
+                    chunks.append(current)
+                current = line
+            else:
+                current = f"{current}\n{line}" if current else line
+        if current:
+            chunks.append(current)
+        return chunks
 
     @staticmethod
     def _build_header(site_id: str, zone_id: str, risk_level: str) -> str:

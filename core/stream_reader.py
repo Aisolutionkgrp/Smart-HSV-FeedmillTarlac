@@ -143,13 +143,11 @@ class StreamReader:
 
     def _open_opencv(self) -> Optional[cv2.VideoCapture]:
         try:
-            # Force TCP + suppress HEVC warnings + larger buffer
+            # Force TCP transport for stability (VLC also uses TCP by default,
+            # and is rock-solid on this camera — keep settings minimal/proven).
             os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
                 "rtsp_transport;tcp|"
-                "timeout;10000000|"
-                "buffer_size;1048576|"
-                "max_delay;500000|"
-                "reorder_queue_size;0"
+                "timeout;10000000"
             )
             os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "quiet"
             cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)

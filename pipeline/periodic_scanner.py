@@ -1,13 +1,5 @@
-"""
+﻿"""
 pipeline/periodic_scanner.py
-──────────────────────────────
-Logic 2: Periodic environment + person scan.
-
-ทุก N นาที (จาก config.yaml logic.periodic_interval_minutes):
-- ถ่าย full frame ปัจจุบัน
-- เรียก site.on_periodic() → Gemini Prompt A (ถ้ามีคน) + Prompt B (เสมอ)
-- save DB เสมอ
-- ส่ง Telegram เฉพาะ RED เท่านั้น — ORANGE/YELLOW เก็บ log อย่างเดียว
 """
 
 import logging
@@ -23,9 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class PeriodicScanner:
-    """Runs Logic 2 (periodic scan) on a fixed interval."""
-
-    # ส่ง Telegram เฉพาะ risk level เหล่านี้เท่านั้น
     _ALERT_RISK_LEVELS = {"RED"}
 
     def __init__(self, site, interval_minutes: int = 10):
@@ -33,15 +22,10 @@ class PeriodicScanner:
         self.interval_minutes = interval_minutes
         self._alert = AlertManager()
         self._scheduler = AsyncIOScheduler()
+        self._latest_frame = None
+        self._latest_detection = None
 
-        # Latest frame + detection, updated by FrameProcessor every frame
-        self._latest_frame: np.ndarray | None = None
-        self._latest_detection: DetectionResult | None = None
-
-    # ── Public ────────────────────────────────────────────────────────────────
-
-    def update_frame(self, frame: np.ndarray, detection: DetectionResult) -> None:
-        """Called by FrameProcessor every frame to keep latest snapshot ready."""
+    def update_frame(self, frame, detection):
         self._latest_frame = frame
         self._latest_detection = detection
 
@@ -51,18 +35,13 @@ class PeriodicScanner:
             "interval",
             minutes=self.interval_minutes,
             id=f"periodic_{self.site.site_config.site_id}",
-            next_run_time=None,  # don't run immediately on startup
+            next_run_time=None,
         )
         self._scheduler.start()
-        logger.info(
-            f"[{self.site.site_config.site_id}] Periodic scanner started "
-            f"— every {self.interval_minutes} min"
-        )
+        logger.info(f"[{self.site.site_config.site_id}] Periodic scanner started — every {self.interval_minutes} min")
 
     def stop(self) -> None:
         self._scheduler.shutdown(wait=False)
-
-    # ── Private ───────────────────────────────────────────────────────────────
 
     async def _run_scan(self) -> None:
         site_id = self.site.site_config.site_id
@@ -84,66 +63,45 @@ class PeriodicScanner:
 
         if not result:
             logger.info(f"[{site_id}] Periodic scan: no hazards found")
-            # Still save a "clean" event for history/trend tracking
             await save_event(
-                site_id=site_id,
-                zone_id="periodic_scan",
-                risk_level="GREEN",
-                result={"hazards": []},
-                snapshot_path=None,
-                alert_status="not_sent",
+                site_id=site_id, zone_id="periodic_scan", risk_level="GREEN",
+                result={"hazards": []}, snapshot_path=None, alert_status="not_sent",
             )
             return
 
         risk_level = result.get("risk_level", "YELLOW")
         annotated_frame = result["frame"]
 
-        # Save snapshot always
         snapshot_path = self._save_snapshot(annotated_frame, site_id, risk_level, detection.frame_index)
 
-        # Save to DB always
         event_id = await save_event(
-            site_id=site_id,
-            zone_id="periodic_scan",
-            risk_level=risk_level,
-            result=result,
-            snapshot_path=snapshot_path,
+            site_id=site_id, zone_id="periodic_scan", risk_level=risk_level,
+            result=result, snapshot_path=snapshot_path,
             alert_status="sent" if risk_level in self._ALERT_RISK_LEVELS else "logged_only",
         )
 
-        # Send Telegram ONLY for RED
         if risk_level in self._ALERT_RISK_LEVELS:
             try:
                 await self._alert.send_alert(
-                    frame=annotated_frame,
-                    text=result.get("text", ""),
-                    site_id=site_id,
-                    zone_id="periodic_scan",
-                    risk_level=risk_level,
+                    frame=annotated_frame, text=result.get("text", ""),
+                    site_id=site_id, zone_id="periodic_scan", risk_level=risk_level,
                 )
                 logger.warning(f"[{site_id}] Periodic RED alert sent — event_id={event_id}")
             except Exception as e:
                 logger.error(f"[{site_id}] Periodic Telegram send failed: {e}")
         else:
-            logger.info(
-                f"[{site_id}] Periodic scan: {risk_level} risk — "
-                f"logged only (event_id={event_id}), no Telegram sent"
-            )
+            logger.info(f"[{site_id}] Periodic scan: {risk_level} risk — logged only (event_id={event_id}), no Telegram sent")
 
     @staticmethod
-    def _save_snapshot(frame, site_id: str, risk_level: str, frame_index: int):
+    def _save_snapshot(frame, site_id, risk_level, frame_index):
         import datetime
-        from pathlib import Path
-
         from config.settings import settings
+        import cv2
 
         snapshot_dir = settings.SNAPSHOT_DIR / site_id
         snapshot_dir.mkdir(parents=True, exist_ok=True)
-
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         path = snapshot_dir / f"{site_id}_periodic_{risk_level}_{ts}.jpg"
-
-        import cv2
         cv2.imwrite(str(path), frame)
         logger.info(f"Periodic snapshot saved: {path}")
         return path

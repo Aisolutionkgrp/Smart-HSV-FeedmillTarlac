@@ -151,6 +151,14 @@ class Detector:
                     logger.debug(f"Filtered: track={track_id} insufficient keypoints={kp_count}")
                     continue
 
+                # Structural sanity check: human anatomy is vertically ordered.
+                # shoulder must be above hip, hip must be above knee, etc.
+                # Machinery/objects often have keypoints scattered without
+                # this consistent top-to-bottom ordering.
+                if not self._is_anatomically_plausible(keypoints):
+                    logger.debug(f"Filtered: track={track_id} failed anatomy check")
+                    continue
+
                 vx, vy, speed, heading = self._update_velocity(track_id, cx, cy)
 
                 persons.append(PersonDetection(
@@ -201,6 +209,50 @@ class Detector:
         speed = float(np.hypot(vx, vy))
         heading = float(np.degrees(np.arctan2(vy, vx)) % 360)
         return vx, vy, speed, heading
+
+    @staticmethod
+    def _is_anatomically_plausible(kp: Keypoints) -> bool:
+        """
+        Check that detected keypoints follow human top-to-bottom anatomy.
+        Rejects detections where e.g. "knee" keypoint is above "shoulder" —
+        a strong signal the YOLO model latched onto machinery, not a person.
+        Uses Y coordinate (smaller Y = higher up in image).
+        """
+        # Average left/right pairs where both exist, else use whichever is present
+        def avg_y(*points) -> float | None:
+            ys = [p[1] for p in points if p is not None]
+            return sum(ys) / len(ys) if ys else None
+
+        shoulder_y = avg_y(kp.left_shoulder, kp.right_shoulder)
+        hip_y = avg_y(kp.left_hip, kp.right_hip)
+        knee_y = avg_y(kp.left_knee, kp.right_knee)
+        ankle_y = avg_y(kp.left_ankle, kp.right_ankle)
+        nose_y = kp.nose[1] if kp.nose else None
+
+        # Margin allows for natural pose variation (bending, crouching)
+        margin = 5.0
+
+        # nose should be above (smaller y) shoulder, if both visible
+        if nose_y is not None and shoulder_y is not None:
+            if nose_y > shoulder_y + margin:
+                return False
+
+        # shoulder should be above hip
+        if shoulder_y is not None and hip_y is not None:
+            if shoulder_y > hip_y + margin:
+                return False
+
+        # hip should be above knee
+        if hip_y is not None and knee_y is not None:
+            if hip_y > knee_y + margin:
+                return False
+
+        # knee should be above ankle
+        if knee_y is not None and ankle_y is not None:
+            if knee_y > ankle_y + margin:
+                return False
+
+        return True
 
     def _prune_history(self, active_ids: set[int]) -> None:
         stale = [tid for tid in self._history if tid not in active_ids]

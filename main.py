@@ -5,6 +5,7 @@ main.py — entry point
 """
 
 import argparse
+import asyncio
 import logging
 import sys
 import threading
@@ -53,6 +54,17 @@ def start_web_server(port: int = 8000):
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
 
 
+def start_periodic_scanner_loop(scanner):
+    """
+    Run APScheduler in its own asyncio event loop, in a background thread.
+    AsyncIOScheduler needs a running event loop to fire async jobs.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    scanner.start()
+    loop.run_forever()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Factory Safety Vision System")
     parser.add_argument("--site", default="robot_zone")
@@ -71,21 +83,41 @@ def main():
     web_thread.start()
     logger.info(f"Web preview: http://localhost:{args.port}/preview/{args.site}")
 
-    # Load site + run processor
+    # Load site
     site = load_site(args.site)
     if args.rtsp:
         site.site_config.camera_rtsp = args.rtsp
 
+    # ── Logic 2: Periodic scanner ────────────────────────────────────────────
+    from pipeline.periodic_scanner import PeriodicScanner
+    interval = site.site_config.logic.get("periodic_interval_minutes", 10)
+    periodic_enabled = site.site_config.logic.get("periodic_enabled", True)
+
+    scanner = None
+    if periodic_enabled:
+        scanner = PeriodicScanner(site=site, interval_minutes=interval)
+        scanner_thread = threading.Thread(
+            target=start_periodic_scanner_loop,
+            args=(scanner,),
+            daemon=True,
+        )
+        scanner_thread.start()
+        logger.info(f"Periodic scanner thread started (every {interval} min)")
+    else:
+        logger.info("Periodic scanner disabled in config")
+
+    # ── Logic 1: Main frame processing loop ──────────────────────────────────
     from pipeline.frame_processor import FrameProcessor
-    processor = FrameProcessor(site=site, show_preview=True)
+    processor = FrameProcessor(site=site, show_preview=True, periodic_scanner=scanner)
 
     try:
         processor.run()
     except KeyboardInterrupt:
         logger.info("Interrupted - shutting down...")
         processor.stop()
+        if scanner:
+            scanner.stop()
 
 
 if __name__ == "__main__":
     main()
-    
