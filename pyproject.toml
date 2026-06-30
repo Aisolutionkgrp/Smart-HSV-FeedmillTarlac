@@ -2,7 +2,7 @@
 name = "hsv-vision"
 version = "1.0.0"
 description = "Factory Safety Vision System — CCTV-based AI safety monitoring"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 
 dependencies = [
     # ── AI / Vision ───────────────────────────────────────────
@@ -67,8 +67,8 @@ package = false          # app ไม่ใช่ library — ไม่ต้อ
 # matching wheel and uv falls back to PyPI automatically — safe either way.
 # ──────────────────────────────────────────────────────────────────
 [tool.uv.sources]
-torch = { index = "jetson-pytorch" }
-torchvision = { index = "jetson-pytorch" }
+torch = { index = "jetson-pytorch", marker = "platform_machine == 'aarch64'" }
+torchvision = { index = "jetson-pytorch", marker = "platform_machine == 'aarch64'" }
 
 # Jetson AI Lab community-maintained mirror — provides prebuilt wheels for
 # multiple Python versions (cp310, cp312...) matched to JetPack 6.x / CUDA 12.6,
