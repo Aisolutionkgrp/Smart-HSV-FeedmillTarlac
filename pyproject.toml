@@ -70,7 +70,10 @@ package = false          # app ไม่ใช่ library — ไม่ต้อ
 torch = { index = "jetson-pytorch" }
 torchvision = { index = "jetson-pytorch" }
 
+# Jetson AI Lab community-maintained mirror — provides prebuilt wheels for
+# multiple Python versions (cp310, cp312...) matched to JetPack 6.x / CUDA 12.6,
+# unlike NVIDIA's own redist index which only ships cp310 wheels.
 [[tool.uv.index]]
 name = "jetson-pytorch"
-url = "https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch"
+url = "https://pypi.jetson-ai-lab.io/jp6/cu126"
 explicit = true
