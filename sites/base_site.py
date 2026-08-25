@@ -69,10 +69,16 @@ class BaseSite(ABC):
     def __init__(self, config_path: Path):
         self.config_path = config_path
         self.site_config, self.zone_manager = self._load(config_path)
+        if self.site_config.cameras:
+            rtsp_status = f"✓ {len(self.site_config.cameras)} camera(s) set"
+        elif self.site_config.camera_rtsp:
+            rtsp_status = "✓ set"
+        else:
+            rtsp_status = "✗ MISSING"
         logger.info(
             f"Site loaded: {self.site_config.site_id} "
             f"({len(self.zone_manager._zones)} zones) "
-            f"rtsp={'✓ set' if self.site_config.camera_rtsp else '✗ MISSING'}"
+            f"rtsp={rtsp_status}"
         )
 
     # ── Abstract interface ────────────────────────────────────────────────────
