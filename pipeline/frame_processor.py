@@ -20,12 +20,12 @@ from api.preview import push_frame
 from config.settings import settings
 from core.alert_manager import AlertManager
 from core.cooldown_manager import CooldownManager
+from core.detector import DetectionResult, Detector, PersonDetection
+from core.stream_reader import StreamReader
+from core.zone_manager import ZoneCheckResult, ZoneHit
 from pipeline.event_saver import save_event
 from pipeline.periodic_scanner import PeriodicScanner
-from core.detector import Detector, DetectionResult, PersonDetection
-from core.zone_manager import ZoneCheckResult, ZoneHit
 from sites.base_site import BaseSite
-from core.stream_reader import StreamReader
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,8 @@ class FrameProcessor:
             cv2.imwrite(str(preview_path), annotated)
 
         # 6. Cooldown check + trigger site logic
-        if zone_result.any_hit:
+        event_enabled = self.site.site_config.logic.get("event_enabled", True)
+        if event_enabled and zone_result.any_hit:
             self._handle_hits(zone_result, frame, detection, meta)
 
     # ── Annotation ────────────────────────────────────────────────────────────

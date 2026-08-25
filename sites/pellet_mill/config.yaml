@@ -1,0 +1,33 @@
+# sites/pellet_mill/config.yaml
+#
+# v1 — snapshot-only monitoring: no zone polygons yet (need real camera
+# footage to calibrate them). Each camera grabs one frame every
+# periodic_interval_minutes and Gemini scans it for environment hazards.
+# event_enabled stays false since there are no zones to trigger on.
+
+site_id: "pellet_mill"
+site_name: "ไลน์ปั้มเม็ด (Pellet Mill)"
+resolution: [1920, 1080]
+
+cameras:
+  - camera_id: "pellet_mill_right"
+    name: "Pellet Mill Area Right"
+    rtsp: "${PELLET_MILL_RIGHT_RTSP}"
+  - camera_id: "pellet_mill_left"
+    name: "Pellet Mill Area Left"
+    rtsp: "${PELLET_MILL_LEFT_RTSP}"
+
+zones: []   # TODO: add once footage is reviewed and polygons are drawn
+
+logic:
+  event_enabled: false
+  periodic_enabled: true
+  periodic_interval_minutes: 60
+  cooldown_seconds: 60
+  prediction_enabled: false
+
+ppe_required: []   # TODO: fill in once zone-based PPE rules are defined
+
+alert:
+  telegram_enabled: true
+  save_snapshot: true

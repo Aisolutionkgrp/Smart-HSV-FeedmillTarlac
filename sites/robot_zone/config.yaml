@@ -45,9 +45,9 @@ zones:
       - [705, 158]
 
 logic:
-  event_enabled: true
+  event_enabled: false
   periodic_enabled: true
-  periodic_interval_minutes: 10
+  periodic_interval_minutes: 60
   cooldown_seconds: 60
   prediction_enabled: true
 

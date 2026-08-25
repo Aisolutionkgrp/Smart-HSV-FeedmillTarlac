@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     ROBOT_ZONE_CAM1_RTSP: str = ""
     ROBOT_ZONE_CAM2_RTSP: str = ""
     PELLET_MILL_CAM1_RTSP: str = ""
+    PELLET_MILL_RIGHT_RTSP: str = ""
+    PELLET_MILL_LEFT_RTSP: str = ""
     LOADING_ZONE_CAM1_RTSP: str = ""
 
     # ── Telegram ──────────────────────────────────────────────

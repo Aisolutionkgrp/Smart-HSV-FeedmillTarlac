@@ -7,9 +7,10 @@ main.py — entry point
 import argparse
 import asyncio
 import logging
+from pathlib import Path
 import sys
 import threading
-from pathlib import Path
+import time
 
 # ── Add project root to sys.path ──────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent
@@ -18,6 +19,7 @@ if str(ROOT) not in sys.path:
 
 # ── Load .env FIRST ───────────────────────────────────────────────────────────
 from dotenv import load_dotenv  # noqa: E402
+
 load_dotenv(ROOT / ".env")
 
 # ── Windows Unicode fix ───────────────────────────────────────────────────────
@@ -44,12 +46,16 @@ def load_site(site_id: str):
     if site_id == "robot_zone":
         from sites.robot_zone.site import RobotZoneSite
         return RobotZoneSite(ROOT / "sites" / "robot_zone" / "config.yaml")
+    if site_id == "pellet_mill":
+        from sites.pellet_mill.site import PelletMillSite
+        return PelletMillSite(ROOT / "sites" / "pellet_mill" / "config.yaml")
     raise ValueError(f"Unknown site: {site_id}")
 
 
 def start_web_server(port: int = 8000):
     """Start FastAPI MJPEG server in background thread."""
     import uvicorn
+
     from api.main import app
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
 
@@ -111,6 +117,34 @@ def main():
     site = load_site(args.site)
     if args.rtsp:
         site.site_config.camera_rtsp = args.rtsp
+
+    # ── Multi-camera, no-zone sites: snapshot-only mode ──────────────────────
+    # No continuous YOLO/zone-tracking loop — just grab one frame per camera
+    # on a schedule and run Gemini on it. Used for sites without calibrated
+    # zone polygons yet (e.g. pellet_mill).
+    if site.site_config.cameras:
+        from pipeline.snapshot_scanner import SnapshotScanner
+        interval = site.site_config.logic.get("periodic_interval_minutes", 60)
+        scanner = SnapshotScanner(site=site, cameras=site.site_config.cameras, interval_minutes=interval)
+        ready_event = threading.Event()
+        scanner_thread = threading.Thread(
+            target=start_periodic_scanner_loop,
+            args=(scanner, ready_event),
+            daemon=True,
+        )
+        scanner_thread.start()
+        ready_event.wait(timeout=5)
+        logger.info(
+            f"[{site.site_config.site_id}] Snapshot-only mode — "
+            f"{len(site.site_config.cameras)} camera(s), every {interval} min"
+        )
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            logger.info("Interrupted - shutting down...")
+            scanner.stop()
+        return
 
     # ── Logic 2: Periodic scanner ────────────────────────────────────────────
     from pipeline.periodic_scanner import PeriodicScanner

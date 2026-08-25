@@ -37,6 +37,11 @@ class SiteConfig:
     ppe_required: list[str]
     alert: dict
     raw: dict  # full yaml dict for site-specific extras
+    cameras: list[dict] = None  # multi-camera sites: [{"camera_id", "name", "rtsp"}, ...]
+
+    def __post_init__(self):
+        if self.cameras is None:
+            self.cameras = []
 
 
 def _resolve_env(value: str) -> str:
@@ -92,6 +97,16 @@ class BaseSite(ABC):
         # Resolve ${ENV_VAR} in camera_rtsp
         camera_rtsp = _resolve_env(raw.get("camera_rtsp", ""))
 
+        # Multi-camera sites (no single camera_rtsp): resolve ${ENV_VAR} per camera
+        cameras = [
+            {
+                "camera_id": c["camera_id"],
+                "name": c.get("name", c["camera_id"]),
+                "rtsp": _resolve_env(c["rtsp"]),
+            }
+            for c in raw.get("cameras", [])
+        ]
+
         site_cfg = SiteConfig(
             site_id=raw["site_id"],
             site_name=raw["site_name"],
@@ -102,6 +117,7 @@ class BaseSite(ABC):
             ppe_required=raw.get("ppe_required", []),
             alert=raw.get("alert", {}),
             raw=raw,
+            cameras=cameras,
         )
 
         zones = [
